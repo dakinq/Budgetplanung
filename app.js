@@ -1,6 +1,6 @@
 'use strict';
 const K='wohnbudget-v1';
-const def=()=>({income:0,buffer:300,green:800,orange:200,sort:'name',exp:[],flats:[]});
+const def=()=>({income:0,buffer:300,green:800,orange:200,sort:'name',exp:[],flats:[],model:'ind',r1:1.5,r2:1.75,l1:65,l2:15,eq:20,years:15});
 let S=load(),view={n:'home'};
 function load(){try{const s=JSON.parse(localStorage.getItem(K));if(s&&Array.isArray(s.flats))return Object.assign(def(),s)}catch(e){}return def()}
 function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){alert('Speichern fehlgeschlagen (Speicher voll oder gesperrt).')}}
@@ -12,12 +12,28 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const expTotal=()=>S.exp.reduce((a,e)=>a+e.amt,0);
 const housing=f=>f.rent+f.nk+f.pc*f.pp;
 function calc(f){const h=housing(f),e=expTotal(),rem=S.income-e-h,free=rem-S.buffer;
- return{h,e,rem,free,once:f.once.reduce((a,o)=>a+o.amt,0),used:S.income>0?(e+h)/S.income:1,st:free>=S.green?0:free>=S.orange?1:2}}
+ const fx=S.exp.filter(x=>x.type!=='var').reduce((t,x)=>t+x.amt,0);return{h,e,rem,nv:S.income-fx-h,free,once:f.once.reduce((a,o)=>a+o.amt,0),used:S.income>0?(e+h)/S.income:1,st:free>=S.green?0:free>=S.orange?1:2}}
+//M1
+function mort(s=S){const eq=s.eq/100,ind=s.model!=='min';
+ const a1=ind?s.l1/100:Math.min(2/3,1-eq),a2=ind?s.l2/100:Math.max(0,1-eq-a1);
+ const i1=a1*s.r1/100,i2=a2*s.r2/100,am=a2>0?(s.years>0?a2/s.years:NaN):0,f=i1+i2+am;
+ return{a1,a2,i1,i2,am,f,ok:isFinite(f)&&f>0}}
+const buy=(rent,s=S)=>{const m=mort(s);return m.ok&&rent>0?rent*12/m.f:null};
+//M2
+const nf4=new Intl.NumberFormat('de-CH',{maximumFractionDigits:4});
+const chfs=v=>v==null?'–':nf.format(Math.round(v))+'\u00a0CHF';
+const yr=v=>{const r=Math.round(v*12);return(r>0?'+':r<0?'-':'')+nf.format(Math.abs(r))+'\u00a0CHF\u00a0/\u00a0Jahr'};
+const sg=v=>{const r=Math.round(v*12);return r>0?'pos':r<0?'neg':''};
+function mortHint(){const m=mort(),p=x=>nf4.format(x*100)+'\u00a0%';
+ let t=m.ok?`Kostenfaktor ${p(m.f)} p. a. (1. Hyp. ${p(m.i1)} + 2. Hyp. ${p(m.i2)} + Amortisation ${p(m.am)}).`:'Ungültige Angaben: Kaufpreis nicht berechenbar (Amortisationsdauer muss grösser als 0 sein).';
+ if(S.model==='min')t+=` Minimum: 1. Hypothek ${p(m.a1)}, 2. Hypothek ${p(m.a2)}, Amortisation auf zwei Drittel des Belehnungswerts.`;
+ else if(Math.abs(S.l1+S.l2+S.eq-100)>.001)t+=' Hinweis: 1. + 2. Hypothek + Eigenkapital ergeben nicht 100 %.';
+ return t+' Theoretischer Wert nur aus der Nettomiete, ohne Unterhalt, Steuern, Kaufnebenkosten und Tragbarkeit; keine Bewertung oder Finanzierungszusage.'}
 const ST=['Entspannt','Machbar','Kritisch'];
 const chip=s=>`<span class="chip s${s}">${ST[s]}</span>`;
 const bar=(u,s)=>`<div class="bar"><i class="b${s}" style="width:${Math.min(100,Math.max(0,u*100))}%"></i></div><div class="mute">${Math.round(u*100)}% des Einkommens verplant</div>`;
 const flat=()=>S.flats.find(f=>f.id===view.id);
-const inp=(c,f,v,o={})=>`<input data-c="${c}" data-f="${f}" ${o.id?`data-id="${o.id}"`:''} data-t="${o.t||'n'}" ${o.t==='s'?'':'inputmode="'+(o.int?'numeric':'decimal')+'"'} value="${esc(o.t==='s'?v:(v||''))}" placeholder="${o.ph??'0'}" ${o.aria?`aria-label="${o.aria}"`:''}>`;
+const inp=(c,f,v,o={})=>`<input data-c="${c}" data-f="${f}" ${o.id?`data-id="${o.id}"`:''} ${o.max?`data-max="${o.max}"`:''} data-t="${o.t||'n'}" ${o.t==='s'?'':'inputmode="'+(o.int?'numeric':'decimal')+'"'} value="${esc(o.t==='s'?v:(v||''))}" placeholder="${o.ph??'0'}" ${o.aria?`aria-label="${o.aria}"`:''}>`;
 
 function home(){
  const fl=[...S.flats].map(f=>({f,c:calc(f)}));
@@ -31,7 +47,8 @@ function home(){
  <select data-c="root" data-f="sort" data-t="s" data-r="1" style="width:auto" aria-label="Sortierung"><option value="name">Name</option><option value="cost">Kosten</option><option value="rest">Restbudget</option></select></div>
  ${fl.length?fl.map(({f,c})=>`<div class="card fl" data-a="go" data-v="flat" data-id="${f.id}"><div class="top" style="margin:0"><b>${f.fav?'★ ':''}${esc(f.name)||'Ohne Name'}</b>${chip(c.st)}</div>
  <div class="row"><span class="mute">Wohnkosten / Monat</span><b>${chf(c.h)}</b></div>
- <div class="row"><span class="mute">Verbleibendes Budget</span><b>${chf(c.rem)}</b></div>${bar(c.used,c.st)}</div>`).join(''):'<div class="empty">Noch keine Wohnung.<br>Lege deine erste Wohnung an.</div>'}
+ <div class="duo"><div><div class="mute">Restbudget nach allen Ausgaben</div><div class="mid" style="color:var(--${['g','o','r'][c.st]})">${chf(c.rem)}</div><div class="yr ${sg(c.rem)}">${yr(c.rem)}</div></div>
+ <div><div class="mute">Restbudget ohne variable Kosten</div><div class="mid">${chf(c.nv)}</div><div class="yr ${sg(c.nv)}">${yr(c.nv)}</div></div></div>${bar(c.used,c.st)}<div class="row buy"><span class="mute">Geschätzter Kaufpreis (nur Nettomiete)</span><b>${chfs(buy(f.rent))}</b></div></div>`).join(''):'<div class="empty">Noch keine Wohnung.<br>Lege deine erste Wohnung an.</div>'}
  <button class="btn p" data-a="addFlat">+ Neue Wohnung</button>
  <p class="note">Die Einschätzung ist eine Orientierungshilfe und keine Finanzberatung.</p>`}
 
@@ -67,6 +84,10 @@ function budget(){return `<h1>Budget</h1><div class="card"><label>Monatliches Ne
  <select data-c="exp" data-f="type" data-t="s" data-id="${e.id}" data-r="1" style="grid-column:1/3" aria-label="Art"><option value="fix" ${e.type==='fix'?'selected':''}>Fixkosten</option><option value="var" ${e.type==='var'?'selected':''}>Variable Kosten</option></select></div>`).join('')||'<div class="mute" style="padding:8px 0">Noch keine Ausgaben, z. B. Krankenkasse, Steuern, Lebensmittel.</div>'}
  <button class="btn" data-a="addExp">+ Ausgabe hinzufügen</button></div><div id="live">${budgetLive()}</div>
  <h2>Ampel-Grenzen (frei verfügbar nach Puffer)</h2><div class="card"><label>Entspannt ab (CHF)</label>${inp('root','green',S.green)}<label>Machbar ab (CHF), darunter kritisch</label>${inp('root','orange',S.orange)}</div>
+ <h2>Immobilien-Kaufvergleich</h2><div class="card"><label>Finanzierungsmodell</label><select data-c="root" data-f="model" data-t="s" data-r="1"><option value="ind" ${S.model!=='min'?'selected':''}>Individuell (Belehnung frei wählbar)</option><option value="min" ${S.model==='min'?'selected':''}>Aufsichtsrechtliches Minimum (2/3 in 15 J.)</option></select>
+ <label>Zinssatz 1. Hypothek (%)</label>${inp('root','r1',S.r1,{max:100})}<label>Zinssatz 2. Hypothek (%)</label>${inp('root','r2',S.r2,{max:100})}
+ ${S.model==='min'?'':`<label>Belehnung 1. Hypothek (%)</label>${inp('root','l1',S.l1,{max:100})}<label>Belehnung 2. Hypothek (%)</label>${inp('root','l2',S.l2,{max:100})}`}
+ <label>Eigenkapital (%)</label>${inp('root','eq',S.eq,{max:100})}<label>Amortisationsdauer (Jahre)</label>${inp('root','years',S.years)}<p class="note" id="mh">${mortHint()}</p></div>
  <h2>Daten</h2><div class="card"><div class="grid" style="gap:8px"><button class="btn" data-a="export">Exportieren</button><button class="btn" data-a="import">Importieren</button></div>
  <input type="file" id="file" accept="application/json,.json" hidden><p class="note">Alle Daten liegen nur auf diesem Gerät. Exportiere regelmässig ein Backup (JSON).</p></div>`}
 
@@ -80,13 +101,13 @@ function tabs(){const t=[['home','⌂','Übersicht'],['compare','⇄','Vergleich
  return `<nav>${t.map(x=>`<button class="${a===x[0]?'on':''}" data-a="go" data-v="${x[0]}"><b>${x[1]}</b>${x[2]}</button>`).join('')}</nav>`}
 function render(){const v=view.n;$('#app').innerHTML=({home,flat:flatView,compare,budget})[v]()+tabs();
  const s=$('select[data-f=sort]');if(s)s.value=S.sort}
-const refresh=()=>{const l=$('#live');if(l)l.innerHTML=view.n==='flat'?flatLive():budgetLive()};
+const refresh=()=>{const mh=$('#mh');if(mh)mh.textContent=mortHint();const l=$('#live');if(l)l.innerHTML=view.n==='flat'?flatLive():budgetLive()};
 const mkFlat=()=>({id:uid(),name:'',addr:'',notes:'',fav:false,rent:0,nk:0,pc:0,pp:0,once:[]});
 
 document.addEventListener('input',onEdit);document.addEventListener('change',e=>{if(e.target.id==='file')return doImport(e.target);if(e.target.matches('select'))onEdit(e)});
 function onEdit(e){const el=e.target,c=el.dataset.c;if(!c)return;
  let o=c==='root'?S:c==='flat'?flat():c==='exp'?S.exp.find(x=>x.id===el.dataset.id):flat()?.once.find(x=>x.id===el.dataset.id);if(!o)return;
- let v=el.value;if(el.dataset.t==='n'){const n=num(v);el.classList.toggle('bad',n<0||(v.trim()!==''&&!/^[\d’'\s.,-]+$/.test(v)));v=Math.max(0,n);if(el.inputMode==='numeric')v=Math.floor(v)}
+ let v=el.value;if(el.dataset.t==='n'){const n=num(v);el.classList.toggle('bad',n<0||(v.trim()!==''&&!/^[\d’'\s.,-]+$/.test(v)));v=Math.max(0,n);if(el.dataset.max)v=Math.min(v,+el.dataset.max);if(el.inputMode==='numeric')v=Math.floor(v)}
  o[el.dataset.f]=v;save();if(el.dataset.r)render();else refresh()}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,f=flat();
  const go=(n,id)=>{view={n,id};render();window.scrollTo(0,0)};
