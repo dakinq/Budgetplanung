@@ -2,18 +2,21 @@
 const K='wohnbudget-v1';
 const def=()=>({income:0,buffer:300,green:800,orange:200,sort:'name',exp:[],flats:[],model:'ind',r1:1.5,r2:1.75,l1:65,l2:15,eq:20,years:15,ref:null,bonus:0,tax:0});
 let S=load(),view={n:'home'},expF='all';
-function load(){try{const s=JSON.parse(localStorage.getItem(K));if(s&&Array.isArray(s.flats)){const m=Object.assign(def(),s);m.exp=(m.exp||[]).map(e=>({...e,on:e.on!==false}));if(!m.flats.some(f=>f.id===m.ref))m.ref=null;return m}}catch(e){}return def()}
+function load(){try{const s=JSON.parse(localStorage.getItem(K));if(s&&Array.isArray(s.flats)){const m=Object.assign(def(),s);m.exp=(m.exp||[]).map(e=>({...e,on:e.on!==false,per:e.per==='y'?'y':'m',cat:e.cat||'Sonstiges',type:e.type==='var'?'var':'fix'}));if(!m.flats.some(f=>f.id===m.ref))m.ref=null;return m}}catch(e){}return def()}
 function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){alert('Speichern fehlgeschlagen (Speicher voll oder gesperrt).')}}
 const uid=()=>Math.random().toString(36).slice(2,9),$=s=>document.querySelector(s);
 const nf=new Intl.NumberFormat('de-CH',{maximumFractionDigits:2});
 const chf=v=>'CHF\u00a0'+nf.format(Math.round((v||0)*100)/100);
 const num=v=>{const n=parseFloat(String(v).replace(/[’'\s]/g,'').replace(',','.'));return isFinite(n)?n:0};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const act=()=>S.exp.filter(e=>e.on!==false);
-const expTotal=()=>act().reduce((a,e)=>a+e.amt,0);
+const CATS=['Wohnen','Mobilität','Versicherungen','Gesundheit','Lebensmittel','Freizeit','Steuern & Abgaben','Sonstiges'];
+const act=()=>S.exp.filter(e=>e.on!==false),actM=()=>act().filter(e=>e.per!=='y'),actY=()=>act().filter(e=>e.per==='y');
+const sum=a=>a.reduce((t,e)=>t+e.amt,0),fixOnly=a=>a.filter(e=>e.type!=='var');
+const expTotal=()=>sum(actM());
+const catOpts=c=>{c=c||'Sonstiges';return(CATS.includes(c)?CATS:[...CATS,c]).map(x=>`<option ${x===c?'selected':''}>${esc(x)}</option>`).join('')};
 const housing=f=>f.rent+f.nk+f.pc*f.pp;
 function calc(f){const h=housing(f),e=expTotal(),rem=S.income-e-h,free=rem-S.buffer;
- const fx=act().filter(x=>x.type!=='var').reduce((t,x)=>t+x.amt,0);return{h,e,rem,nv:S.income-fx-h,ya:rem*12+(S.bonus||0)-(S.tax||0),yn:(S.income-fx-h)*12+(S.bonus||0)-(S.tax||0),free,once:f.once.reduce((a,o)=>a+o.amt,0),used:S.income>0?(e+h)/S.income:1,st:free>=S.green?0:free>=S.orange?1:2}}
+ const fx=sum(fixOnly(actM())),yA=sum(actY()),yF=sum(fixOnly(actY()));return{h,e,rem,nv:S.income-fx-h,ya:rem*12-yA+(S.bonus||0)-(S.tax||0),yn:(S.income-fx-h)*12-yF+(S.bonus||0)-(S.tax||0),free,once:f.once.reduce((a,o)=>a+o.amt,0),used:S.income>0?(e+h)/S.income:1,st:free>=S.green?0:free>=S.orange?1:2}}
 //M1
 function mort(s=S){const eq=s.eq/100,ind=s.model!=='min';
  const a1=ind?s.l1/100:Math.min(2/3,1-eq),a2=ind?s.l2/100:Math.max(0,1-eq-a1);
@@ -41,7 +44,7 @@ function home(){
  const k={name:(a,b)=>a.f.name.localeCompare(b.f.name,'de'),cost:(a,b)=>a.c.h-b.c.h,rest:(a,b)=>b.c.free-a.c.free}[S.sort];fl.sort(k);
  return `<h1>WohnBudget</h1>
  <div class="grid"><div class="card"><div class="mute">Nettoeinkommen</div><div class="mid">${chf(S.income)}</div></div>
- <div class="card"><div class="mute">Allg. Ausgaben</div><div class="mid">${chf(expTotal())}</div></div>
+ <div class="card"><div class="mute">Monatl. Ausgaben</div><div class="mid">${chf(expTotal())}</div></div>
  <div class="card"><div class="mute">Vor Wohnkosten übrig</div><div class="mid">${chf(S.income-expTotal())}</div></div>
  <div class="card"><div class="mute">Sicherheitspuffer</div><div class="mid">${chf(S.buffer)}</div></div></div>
  <div class="top" style="margin-top:20px"><h2 style="margin:0">Wohnungen</h2>
@@ -50,7 +53,7 @@ function home(){
  <div class="row"><span class="mute">Wohnkosten / Monat</span><b>${chf(c.h)}</b></div>
  <div class="duo"><div><div class="mute">Restbudget nach allen Ausgaben</div><div class="mid" style="color:var(--${['g','o','r'][c.st]})">${chf(c.rem)}</div></div>
  <div><div class="mute">Restbudget ohne variable Kosten</div><div class="mid">${chf(c.nv)}</div></div></div>
- <div class="duo"><div><div class="mute">Jahresüberschuss nach allen Ausgaben</div>${fs(c.ya,'Jahr')}</div><div><div class="mute">Jahresüberschuss ohne variable Kosten</div>${fs(c.yn,'Jahr')}</div></div>
+ <div class="duo"><div><div class="mute">Jahresrestbudget nach allen Ausgaben</div>${fs(c.ya,'Jahr')}</div><div><div class="mute">Jahresrestbudget ohne variable Kosten</div>${fs(c.yn,'Jahr')}</div></div>
  ${R&&R.f.id!==f.id?`<div class="diffbox"><div>${fs(c.rem-R.c.rem,'Monat')}<div class="mute">gegenüber aktuell</div></div><div>${fs(c.ya-R.c.ya,'Jahr')}<div class="mute">gegenüber aktuell</div></div></div>`:''}${bar(c.used,c.st)}<div class="row buy"><span class="mute">Geschätzter Kaufpreis (nur Nettomiete)</span><b>${chfs(buy(f.rent))}</b></div></div>`).join(''):'<div class="empty">Noch keine Wohnung.<br>Lege deine erste Wohnung an.</div>'}
  <button class="btn p" data-a="addFlat">+ Neue Wohnung</button>
  <p class="note">Die Einschätzung ist eine Orientierungshilfe und keine Finanzberatung.</p>`}
@@ -58,7 +61,7 @@ function home(){
 function flatLive(){const f=flat(),c=calc(f);return `<div class="card"><div class="top" style="margin:0"><span class="mute">Frei verfügbar nach Puffer</span>${chip(c.st)}</div>
  <div class="big" style="color:var(--${['g','o','r'][c.st]})">${chf(c.free)}</div>${bar(c.used,c.st)}</div>
  <div class="card"><div class="row"><span>Nettoeinkommen</span><b>${chf(S.income)}</b></div>
- <div class="row"><span>− Allgemeine Ausgaben</span><span>${chf(c.e)}</span></div>
+ <div class="row"><span>− Monatliche Ausgaben</span><span>${chf(c.e)}</span></div>
  <div class="row"><span>− Nettomiete</span><span>${chf(f.rent)}</span></div>
  <div class="row"><span>− Nebenkosten</span><span>${chf(f.nk)}</span></div>
  <div class="row"><span>− Stellplätze (${f.pc} × ${chf(f.pp)})</span><span>${chf(f.pc*f.pp)}</span></div>
@@ -79,15 +82,18 @@ function flatView(){const f=flat();if(!f){view={n:'home'};return home()}
  <h2>Einmalige Kosten</h2><div class="card">${f.once.map(o=>`<div class="line">${inp('once','name',o.name,{t:'s',id:o.id,ph:'Bezeichnung',aria:'Bezeichnung'})}${inp('once','amt',o.amt,{id:o.id,aria:'Betrag'})}<button class="ic" data-a="delOnce" data-id="${o.id}" aria-label="Löschen">✕</button></div>`).join('')}
  <button class="btn" data-a="addOnce">+ Posten (Kaution, Umzug, Möbel …)</button></div>`}
 
-function budgetLive(){const A=act(),fx=A.filter(e=>e.type!=='var').reduce((a,e)=>a+e.amt,0),t=expTotal(),off=S.exp.filter(e=>e.on===false);
- return `<div class="card"><div class="row"><span>Fixkosten</span><b>${chf(fx)}</b></div><div class="row"><span>Variable Kosten</span><b>${chf(t-fx)}</b></div><div class="row"><b>Total Ausgaben</b><b>${chf(t)}</b></div><div class="row"><b>Übrig vor Wohnkosten</b><b>${chf(S.income-t)}</b></div>${off.length?`<div class="row"><span class="mute">Deaktiviert (nicht eingerechnet, ${off.length})</span><span class="mute">${chf(off.reduce((a,e)=>a+e.amt,0))}</span></div>`:''}</div>`}
+function budgetLive(){const M=actM(),mt=sum(M),mf=sum(fixOnly(M)),yt=sum(actY()),n=S.exp.filter(e=>e.on===false).length;
+ return `<div class="card"><div class="mute" style="margin-bottom:4px">Monatlich</div><div class="row"><span>Fixkosten</span><b>${chf(mf)}</b></div><div class="row"><span>Variable Kosten</span><b>${chf(mt-mf)}</b></div><div class="row"><b>Total pro Monat</b><b>${chf(mt)}</b></div><div class="row"><b>Übrig vor Wohnkosten</b><b>${chf(S.income-mt)}</b></div></div>
+ <div class="card"><div class="mute" style="margin-bottom:4px">Jährlich</div><div class="row"><span>Monatliche Ausgaben × 12</span><span>${chf(mt*12)}</span></div><div class="row"><span>Jährliche Ausgaben (einmalig)</span><span>${chf(yt)}</span></div><div class="row"><b>Ausgaben pro Jahr gesamt</b><b>${chf(mt*12+yt)}</b></div>${n?`<div class="row"><span class="mute">Deaktiviert (nicht eingerechnet)</span><span class="mute">${n} Posten</span></div>`:''}</div>`}
 function budget(){const list=S.exp.filter(e=>expF==='all'||(expF==='on')===(e.on!==false));return `<h1>Budget</h1><div class="card"><label>Monatliches Nettoeinkommen (CHF)</label>${inp('root','income',S.income)}
  <label>Gewünschter Sicherheitspuffer (CHF / Monat)</label>${inp('root','buffer',S.buffer)}</div>
  <h2>Jährliche Beträge</h2><div class="card"><label>Jahresbonus (CHF, zusätzliche Einnahme)</label>${inp('root','bonus',S.bonus)}<label>Jährliche Steuern (CHF, zusätzliche Ausgabe)</label>${inp('root','tax',S.tax)}<p class="note" style="margin-top:10px">Gelten für alle Wohnungen. Werden nicht auf Monate verteilt und fliessen nur in die Jahreswerte ein, die Monatswerte bleiben unverändert.</p></div>
- <h2>Allgemeine Ausgaben</h2><div class="seg">${[['all','Alle'],['on','Aktiv'],['off','Inaktiv']].map(x=>`<button data-a="filt" data-v="${x[0]}" class="${expF===x[0]?'on':''}">${x[1]}</button>`).join('')}</div><div class="card">${list.map(e=>`<div class="line e ${e.on===false?'off':''}">${inp('exp','name',e.name,{t:'s',id:e.id,ph:'Bezeichnung',aria:'Bezeichnung'})}${inp('exp','amt',e.amt,{id:e.id,aria:'Betrag'})}<button class="ic" data-a="delExp" data-id="${e.id}" aria-label="Löschen">✕</button>
- <select data-c="exp" data-f="type" data-t="s" data-id="${e.id}" data-r="1" style="grid-column:1/3" aria-label="Art"><option value="fix" ${e.type==='fix'?'selected':''}>Fixkosten</option><option value="var" ${e.type==='var'?'selected':''}>Variable Kosten</option></select>
- <label class="sw" title="Aktiv"><input type="checkbox" data-c="exp" data-f="on" data-t="b" data-id="${e.id}" data-r="1" ${e.on!==false?'checked':''} aria-label="Aktiv"><i></i></label></div>`).join('')||`<div class="mute" style="padding:8px 0">${S.exp.length?'Keine Posten in dieser Ansicht.':'Noch keine Ausgaben, z. B. Krankenkasse, Steuern, Lebensmittel.'}</div>`}
- <button class="btn" data-a="addExp">+ Ausgabe hinzufügen</button></div><div id="live">${budgetLive()}</div>
+ <h2>Allgemeine Ausgaben</h2><div class="seg">${[['all','Alle'],['on','Aktive'],['off','Inaktive']].map(x=>`<button data-a="filt" data-v="${x[0]}" class="${expF===x[0]?'on':''}">${x[1]}</button>`).join('')}</div><div class="card">${list.map(e=>`<div class="line e ${e.on===false?'off':''}">${inp('exp','name',e.name,{t:'s',id:e.id,ph:'Bezeichnung',aria:'Bezeichnung'})}${inp('exp','amt',e.amt,{id:e.id,aria:'Betrag in CHF'})}<button class="ic" data-a="delExp" data-id="${e.id}" aria-label="Löschen">✕</button>
+ <div class="seg sm" style="grid-column:1/3">${[['m','Monatlich'],['y','Jährlich']].map(x=>`<button data-a="per" data-id="${e.id}" data-v="${x[0]}" class="${(e.per==='y'?'y':'m')===x[0]?'on':''}">${x[1]}</button>`).join('')}</div>
+ <label class="sw" title="Aktiv"><input type="checkbox" data-c="exp" data-f="on" data-t="b" data-id="${e.id}" data-r="1" ${e.on!==false?'checked':''} aria-label="Aktiv"><i></i></label>
+ <div class="sel2" style="grid-column:1/3"><select data-c="exp" data-f="cat" data-t="s" data-id="${e.id}" aria-label="Kategorie">${catOpts(e.cat)}</select><select data-c="exp" data-f="type" data-t="s" data-id="${e.id}" data-r="1" aria-label="Art"><option value="fix" ${e.type!=='var'?'selected':''}>Fixkosten</option><option value="var" ${e.type==='var'?'selected':''}>Variabel</option></select></div>
+ <button class="ic" data-a="dupExp" data-id="${e.id}" aria-label="Duplizieren">⧉</button></div>`).join('')||`<div class="mute" style="padding:8px 0">${S.exp.length?'Keine Posten in dieser Ansicht.':'Noch keine Ausgaben, z. B. Krankenkasse, Steuern, Lebensmittel.'}</div>`}
+ <button class="btn" data-a="addExp">+ Ausgabe hinzufügen</button><p class="note" style="margin-top:10px">Monatliche Posten gelten jeden Monat (Jahr = × 12). Jährliche Posten zählen nur einmal in den Jahreswerten und nicht im Monatsbudget. Deaktivierte Posten werden nirgends eingerechnet.</p></div><div id="live">${budgetLive()}</div>
  <h2>Ampel-Grenzen (frei verfügbar nach Puffer)</h2><div class="card"><label>Entspannt ab (CHF)</label>${inp('root','green',S.green)}<label>Machbar ab (CHF), darunter kritisch</label>${inp('root','orange',S.orange)}</div>
  <h2>Immobilien-Kaufvergleich</h2><div class="card"><label>Finanzierungsmodell</label><select data-c="root" data-f="model" data-t="s" data-r="1"><option value="ind" ${S.model!=='min'?'selected':''}>Individuell (Belehnung frei wählbar)</option><option value="min" ${S.model==='min'?'selected':''}>Aufsichtsrechtliches Minimum (2/3 in 15 J.)</option></select>
  <label>Zinssatz 1. Hypothek (%)</label>${inp('root','r1',S.r1,{max:100})}<label>Zinssatz 2. Hypothek (%)</label>${inp('root','r2',S.r2,{max:100})}
@@ -120,7 +126,9 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b
  else if(a==='ref'){S.ref=f.id;save();render()}
  else if(a==='unref'){S.ref=null;save();render()}
  else if(a==='filt'){expF=b.dataset.v;render()}
- else if(a==='addExp'){if(expF==='off')expF='all';S.exp.push({id:uid(),name:'',amt:0,type:'fix',on:true});save();render()}
+ else if(a==='per'){const e=S.exp.find(x=>x.id===b.dataset.id);if(e){e.per=b.dataset.v;save();render()}}
+ else if(a==='dupExp'){const k=S.exp.findIndex(x=>x.id===b.dataset.id);if(k>=0){S.exp.splice(k+1,0,{...S.exp[k],id:uid(),name:(S.exp[k].name||'Ausgabe')+' (Kopie)'});save();render()}}
+ else if(a==='addExp'){if(expF==='off')expF='all';S.exp.push({id:uid(),name:'',amt:0,type:'fix',cat:'Sonstiges',per:'m',on:true});save();render()}
  else if(a==='delExp'){if(confirm('Ausgabe löschen?')){S.exp=S.exp.filter(x=>x.id!==b.dataset.id);save();render()}}
  else if(a==='export'){const u=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'})),l=document.createElement('a');l.href=u;l.download='wohnbudget-'+new Date().toISOString().slice(0,10)+'.json';l.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
  else if(a==='import')$('#file').click()});
@@ -128,7 +136,7 @@ function doImport(el){const file=el.files[0];if(!file)return;const r=new FileRea
  r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.flats)||!Array.isArray(d.exp))throw 0;
   if(!confirm('Aktuelle Daten durch die importierte Datei ersetzen?'))return;
   const m=Object.assign(def(),d);m.income=Math.max(0,num(m.income));m.buffer=Math.max(0,num(m.buffer));m.bonus=Math.max(0,num(m.bonus));m.tax=Math.max(0,num(m.tax));
-  m.flats=m.flats.map(f=>Object.assign(mkFlat(),f,{once:Array.isArray(f.once)?f.once:[]}));m.exp=m.exp.map(e=>Object.assign({id:uid(),name:'',amt:0,type:'fix'},e,{on:e.on!==false}));if(!m.flats.some(f=>f.id===m.ref))m.ref=null;S=m;save();view={n:'home'};render()}catch(x){alert('Ungültige Datei.')}};
+  m.flats=m.flats.map(f=>Object.assign(mkFlat(),f,{once:Array.isArray(f.once)?f.once:[]}));m.exp=m.exp.map(e=>Object.assign({id:uid(),name:'',type:'fix'},e,{amt:Math.max(0,num(e.amt)),on:e.on!==false,per:e.per==='y'?'y':'m',cat:e.cat||'Sonstiges',type:e.type==='var'?'var':'fix'}));if(!m.flats.some(f=>f.id===m.ref))m.ref=null;S=m;save();view={n:'home'};render()}catch(x){alert('Ungültige Datei.')}};
  r.readAsText(file);el.value=''}
 render();
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));

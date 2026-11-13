@@ -34,3 +34,4 @@ td,th{padding:10px 12px;text-align:right;border-bottom:1px solid var(--line);whi
 .chip.ref{background:transparent;border:1px solid var(--ac);color:var(--ac)}
 .dl{font-size:20px;font-weight:700;letter-spacing:-.02em;white-space:nowrap}.dl.pos{color:var(--g)}.dl.neg{color:var(--r)}
 .dl small{font-size:12px;font-weight:600;color:var(--mute)}.duo .dl{font-size:17px;white-space:normal}.diffbox{display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#f4f8f5;border-radius:12px;padding:10px 12px;margin-top:10px}.diffbox .mute{font-size:12px}
+.line.e{padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid var(--line)}.seg.sm{margin:0}.sel2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.sel2 select{padding:10px 8px;font-size:15px}.line.off .seg{opacity:.5}
